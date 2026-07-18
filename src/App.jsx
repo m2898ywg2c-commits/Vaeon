@@ -1004,8 +1004,10 @@ function CrystalCoach({ mix = 0.5, social = false, mood = "idle" }) {
       s.core.scale.setScalar(breathe);
       if (s.burst > 0) s.burst *= 0.9;
 
-      s.coralLight.intensity = 5 + Math.sin(t * 1.2) * 1.5 * m.glow + m.glow * 3;
-      s.cyanLight.intensity = 5 + Math.cos(t * 1.2) * 1.5 * m.glow + m.glow * 3;
+      const coralBase = s.coralBaseIntensity != null ? s.coralBaseIntensity : 5;
+      const cyanBase = s.cyanBaseIntensity != null ? s.cyanBaseIntensity : 5;
+      s.coralLight.intensity = coralBase + Math.sin(t * 1.2) * 1.5 * m.glow + m.glow * 3;
+      s.cyanLight.intensity = cyanBase + Math.cos(t * 1.2) * 1.5 * m.glow + m.glow * 3;
 
       s.particles.rotation.y += 0.0015 * m.particleSpeed;
       s.particles.rotation.x += 0.0008 * m.particleSpeed;
@@ -1056,25 +1058,14 @@ function CrystalCoach({ mix = 0.5, social = false, mood = "idle" }) {
     s.moodTarget = moodMap[mood] || moodMap.idle;
     if (mood === "celebrating") s.burst = 0.18;
 
-    const coral = new THREE.Color(CORAL_HEX);
-    const cyan = new THREE.Color(CYAN_HEX);
-    // RGB-blending these two directly averages toward grey right in the middle of the
-    // range, that's what was going pale. Blending through hue instead, forced along the
-    // violet/purple path rather than the grey-green path, stays vivid the whole way.
-    const cyanHSL = {};
-    const coralHSL = {};
-    cyan.getHSL(cyanHSL);
-    coral.getHSL(coralHSL);
-    let coralHue = coralHSL.h;
-    if (coralHue < cyanHSL.h) coralHue += 1;
-    const h = (cyanHSL.h + (coralHue - cyanHSL.h) * mix) % 1;
-    const blend = new THREE.Color().setHSL(h, 0.8, 0.55);
-    s.core.material.color = blend;
-    s.core.material.emissive = blend;
-    s.core.material.emissiveIntensity = 0.55;
-    s.satellite.material.color = blend;
-    s.satellite.material.emissive = blend;
-    s.satellite.material.emissiveIntensity = 0.55;
+    // don't blend coral and cyan into one flat colour, that's what was averaging out to
+    // purple, keep the material neutral and let the two coloured lights do the actual work,
+    // your type just shifts which light leans stronger, both stay genuinely visible
+    s.coralBaseIntensity = 3 + mix * 5;
+    s.cyanBaseIntensity = 3 + (1 - mix) * 5;
+    s.core.material.color = new THREE.Color(0xf0f0f2);
+    s.core.material.emissive = new THREE.Color(0x000000);
+    s.satellite.material.color = new THREE.Color(0xf0f0f2);
   }, [mix, social, mood]);
 
   return <div ref={mountRef} style={{ width: "100%", height: "100%" }} />;
