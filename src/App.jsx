@@ -1058,9 +1058,17 @@ function CrystalCoach({ mix = 0.5, social = false, mood = "idle" }) {
 
     const coral = new THREE.Color(CORAL_HEX);
     const cyan = new THREE.Color(CYAN_HEX);
-    // blend directly between the two brand colours, no white dilution, so it reads as
-    // properly coloured all the way through rather than pale with just coloured highlights
-    const blend = cyan.clone().lerp(coral, mix);
+    // RGB-blending these two directly averages toward grey right in the middle of the
+    // range, that's what was going pale. Blending through hue instead, forced along the
+    // violet/purple path rather than the grey-green path, stays vivid the whole way.
+    const cyanHSL = {};
+    const coralHSL = {};
+    cyan.getHSL(cyanHSL);
+    coral.getHSL(coralHSL);
+    let coralHue = coralHSL.h;
+    if (coralHue < cyanHSL.h) coralHue += 1;
+    const h = (cyanHSL.h + (coralHue - cyanHSL.h) * mix) % 1;
+    const blend = new THREE.Color().setHSL(h, 0.8, 0.55);
     s.core.material.color = blend;
     s.core.material.emissive = blend;
     s.core.material.emissiveIntensity = 0.55;
@@ -1110,24 +1118,41 @@ function Onboarding({ onComplete }) {
   const [ageGroup, setAgeGroup] = useState(null);
   const [goals, setGoals] = useState([]);
   const [qIndex, setQIndex] = useState(0);
-  const [structureScore, setStructureScore] = useState(0);
-  const [orientationScore, setOrientationScore] = useState(0);
-  const [socialScore, setSocialScore] = useState(0);
+  const [answers, setAnswers] = useState(() => Array(ASSESSMENT_QUESTIONS.length).fill(null));
 
-  const typeId = resolveType(structureScore, orientationScore, socialScore);
+  const scores = useMemo(() => {
+    let structureScore = 0;
+    let orientationScore = 0;
+    let socialScore = 0;
+    answers.forEach((side, i) => {
+      if (!side) return;
+      const q = ASSESSMENT_QUESTIONS[i];
+      const delta = side === "a" ? 1 : -1;
+      if (q.axis === "structure") structureScore += delta;
+      else if (q.axis === "orientation") orientationScore += delta;
+      else socialScore += delta;
+    });
+    return { structureScore, orientationScore, socialScore };
+  }, [answers]);
+
+  const typeId = resolveType(scores.structureScore, scores.orientationScore, scores.socialScore);
 
   const answer = (side) => {
-    const q = ASSESSMENT_QUESTIONS[qIndex];
-    const delta = side === "a" ? 1 : -1;
-    if (q.axis === "structure") setStructureScore((s) => s + delta);
-    else if (q.axis === "orientation") setOrientationScore((s) => s + delta);
-    else setSocialScore((s) => s + delta);
+    setAnswers((prev) => {
+      const next = [...prev];
+      next[qIndex] = side;
+      return next;
+    });
 
     if (qIndex + 1 < ASSESSMENT_QUESTIONS.length) {
       setTimeout(() => setQIndex((i) => i + 1), 150);
     } else {
       setTimeout(() => setStep("reveal"), 350);
     }
+  };
+
+  const goBack = () => {
+    if (qIndex > 0) setQIndex((i) => i - 1);
   };
 
   const finish = () => {
@@ -1144,7 +1169,7 @@ function Onboarding({ onComplete }) {
           <div className="text-center pt-10">
             <Coach3D mood="idle" size={90} />
             <h1 className="font-display mt-5 text-white" style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: "2.4rem" }}>
-              BEFORE WE START, WHO ARE YOU?
+              WHAT'S YOUR TRAINING STYLE?
             </h1>
             <p className="mt-2 text-sm" style={{ color: OB_SUB, lineHeight: 1.6 }}>
               Twelve quick calls, no right answers. Your training programme stays exactly the same either way, this
@@ -1221,24 +1246,41 @@ function Onboarding({ onComplete }) {
 
         {step === "quiz" && (
           <div>
-            <p className="text-xs font-bold" style={{ color: OB_SUB }}>
-              {String(qIndex + 1).padStart(2, "0")} / {String(ASSESSMENT_QUESTIONS.length).padStart(2, "0")}
-            </p>
-            <AssessmentAxisBar leftLabel="AUTONOMY" rightLabel="STRUCTURE" value={structureScore} />
-            <AssessmentAxisBar leftLabel="BEATING OTHERS" rightLabel="BEATING YOUR OWN BEST" value={orientationScore} />
-            <AssessmentAxisBar leftLabel="SOLO" rightLabel="SOCIAL" value={socialScore} />
+            <div className="flex items-center justify-between mb-1">
+              {qIndex > 0 ? (
+                <button onClick={goBack} className="text-xs font-bold flex items-center gap-1" style={{ color: OB_SUB }}>
+                  <ChevronLeft size={14} /> Back
+                </button>
+              ) : (
+                <span />
+              )}
+              <p className="text-xs font-bold" style={{ color: OB_SUB }}>
+                {String(qIndex + 1).padStart(2, "0")} / {String(ASSESSMENT_QUESTIONS.length).padStart(2, "0")}
+              </p>
+            </div>
+            <AssessmentAxisBar leftLabel="AUTONOMY" rightLabel="STRUCTURE" value={scores.structureScore} />
+            <AssessmentAxisBar leftLabel="BEATING OTHERS" rightLabel="BEATING YOUR OWN BEST" value={scores.orientationScore} />
+            <AssessmentAxisBar leftLabel="SOLO" rightLabel="SOCIAL" value={scores.socialScore} />
             <h2 className="font-display text-xl mt-6 mb-4 text-white">Which is closer to true?</h2>
             <button
               onClick={() => answer("a")}
               className="w-full text-left px-4 py-4 rounded-xl border text-sm mb-3 text-white"
-              style={{ borderColor: OB_LINE, backgroundColor: OB_CARD, lineHeight: 1.5 }}
+              style={{
+                borderColor: answers[qIndex] === "a" ? COACH_CORAL : OB_LINE,
+                backgroundColor: answers[qIndex] === "a" ? "rgba(255,107,87,0.14)" : OB_CARD,
+                lineHeight: 1.5,
+              }}
             >
               {ASSESSMENT_QUESTIONS[qIndex].a}
             </button>
             <button
               onClick={() => answer("b")}
               className="w-full text-left px-4 py-4 rounded-xl border text-sm text-white"
-              style={{ borderColor: OB_LINE, backgroundColor: OB_CARD, lineHeight: 1.5 }}
+              style={{
+                borderColor: answers[qIndex] === "b" ? COACH_CORAL : OB_LINE,
+                backgroundColor: answers[qIndex] === "b" ? "rgba(255,107,87,0.14)" : OB_CARD,
+                lineHeight: 1.5,
+              }}
             >
               {ASSESSMENT_QUESTIONS[qIndex].b}
             </button>
